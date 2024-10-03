@@ -3,8 +3,8 @@ from customtkinter import END, CTkButton as Button, CTkEntry as Entry, CTkLabel 
 from tkinter import messagebox, Spinbox
 from tkcalendar import Calendar
 # SQL and extra functions
-from functions import entry_empty, clean_str, find_id, get_date, get_datetime
-from db_functions import license_plate_available, available_license_plates, available_parts, search_parts, all_parts
+from functions import entry_empty, clean_str, find_id, get_date, get_datetime, format_date_to_sql, format_date_to_calendar
+from db_functions import license_plate_available, available_license_plates, available_parts, search_parts, all_parts, license_plate_on_repair
 from repair import repair as repair_class
 from repair_part import repair_part as repair_part_class
 from part import part as part_class
@@ -30,6 +30,8 @@ class Repairs:
         self.quantity_edit = None
         self.part_id_edit = None
         self.replace_stock = None
+        self.new_date = None
+        self.all_part: dict = all_parts()
         self.window = CTk()
         self.window.title("Reparaciones")
         self.window.config(width=400, height=400)
@@ -66,17 +68,15 @@ class Repairs:
         self.lb_license_plate = Label(fr_entry, text="Matricula")
         self.lb_license_plate.grid(row=1, column=0, pady=0)
         self.selected_license_plate = StringVar(value=self.license_plates[0] if len(self.license_plates) > 0 else "No disponible")
+        self.selected_license_plate.trace("w", self.on_selection_license_plate)
         self.opm_license_plate = OptMenu(fr_entry, values=list(self.license_plates), variable=self.selected_license_plate)
         self.opm_license_plate.grid(row=1, column=1, pady=5)
-
-        self.all_part: dict = all_parts()
         
         self.parts: dict = available_parts()
         self.lb_part = Label(fr_entry, text="Pieza")
         self.lb_part.grid(row=2, column=0, pady=0)
         self.selected_part = StringVar(value=next(iter(self.parts.values())) if len(self.parts) > 0 else "No disponible")
-        self.selected_part.trace("w", self.on_selection_change)
-        
+        self.selected_part.trace("w", self.on_selection_part)
         self.opm_part = OptMenu(fr_entry, values=list(self.parts.values()), variable=self.selected_part)
         self.opm_part.grid(row=2, column=1, pady=5)
         
@@ -90,8 +90,8 @@ class Repairs:
         self.tx_fault = Entry(fr_entry, placeholder_text="Fallo")
         self.tx_fault.grid(row=4, column=1, pady=5, padx=20)
         
-        [year_in, month_in, day_in] = get_date()
-        [year_out, month_out, day_out] = str(get_datetime()+timedelta(days=2)).split("-")
+        [day_in, month_in, year_in] = get_date()
+        [day_out, month_out, year_out] = get_date(2)
         
         self.lb_date_in = Label(fr_entry, text="Fecha\nentrada")
         self.lb_date_in.grid(row=5, column=0, pady=0)
@@ -118,7 +118,7 @@ class Repairs:
         
         self.window.mainloop()
     
-    def on_selection_change(self, *args):
+    def on_selection_part(self, *args):
         # En caso de que deseemos editar algo sin stock
 
         aux = part_class(id=find_id(self.all_part, self.selected_part.get()))
@@ -137,6 +137,29 @@ class Repairs:
         # Actualizar cantidad maxima
         self.sp_quantity.configure(from_=0, to=self.max_quantity)
     
+    def on_selection_license_plate(self, *args):
+        self.tx_folio.configure(state=ENABLE)
+        folio = license_plate_on_repair(self.selected_license_plate.get())
+        self.tx_folio.delete(0, END)
+        if folio > 0:
+            self.tx_folio.insert(0, folio)
+            self.new_date = False
+
+            repair = db_repair.search(self, repair_class(folio=folio))
+            # print(f"Format time: {repair.get_date_in()}")
+            self.cal_date_in.selection_set(format_date_to_calendar(str(repair.get_date_in())))
+            self.cal_date_out.selection_set(format_date_to_calendar(str(repair.get_date_out())))
+            self.cal_date_in.configure(state=DISABLED)
+            self.cal_date_out.configure(state=DISABLED)
+        else:
+            self.tx_folio.insert(0, db_repair.get_max_folio(self)+1)
+            self.new_date = True
+
+            # Agregar fecha del dia de hoy
+            self.cal_date_in.configure(state=ENABLE)
+            self.cal_date_out.configure(state=ENABLE)
+        self.tx_folio.configure(state=DISABLED)
+
     def search_part(self) -> None:
         self.search_parts = search_parts(self.tx_search_folio.get())
         if self.search_parts is None or self.search_parts == {}:
@@ -148,8 +171,8 @@ class Repairs:
         self.opm_search_part.configure(values=list(self.search_parts.values()))
         self.opm_search_part.set(next(iter(self.search_parts.values())))
         self.bt_search.configure(state=ENABLE)
-        
-    def search_repair(self) -> None:
+    
+    def search_repair(self, loop: int = 1) -> None:
         if not self.tx_search_folio.get().isdecimal():
             messagebox.showwarning("Error", "Ingrese un folio válido")
             return
@@ -159,7 +182,7 @@ class Repairs:
         repair = db_repair.search(self, aux)
         
         aux = repair_part_class(folio=self.tx_search_folio.get(), part_id=repair_part_id)
-        print("I'm here")
+        # print("I'm here")
         repair_part = db_repair_part.search(self, aux)
         
         
@@ -173,12 +196,21 @@ class Repairs:
         self.opm_license_plate.set(repair.get_license_plate())
         self.opm_part.set(self.all_part[repair_part.get_part_id()])
         self.sp_quantity.insert(0, str(repair_part.get_quantity()))
+        self.sp_quantity.configure(state='readonly')
         self.tx_fault.insert(0, repair_part.get_fault())
-        self.cal_date_in.selection_set(repair.get_date_in())
-        self.cal_date_out.selection_set(repair.get_date_out())
+        date_in = format_date_to_calendar(str(repair.get_date_in()))
+        date_out = format_date_to_calendar(str(repair.get_date_out()))
+        print(f"Search date in -> {date_in}")
+        print(f"Search date out -> {date_out}")
+        self.cal_date_in.selection_set(date_in)
+        self.cal_date_out.selection_set(date_out)
         
         self.quantity_edit = repair_part.get_quantity()
         self.part_id_edit = repair_part.get_part_id()
+        
+        # Soluciona el error de que se necesita buscar por segunda vez para actualizar correctamente la cantidad en el spinbox
+        if loop == 1:
+            self.search_repair(0)
 
     def new_repair(self) -> None:
         self.tx_folio.configure(state=ENABLE)
@@ -200,57 +232,94 @@ class Repairs:
         self.tx_folio.configure(state=DISABLED)
         self.sp_quantity.configure(state='readonly')
         self.band = True
-        return
 
     def save_repair(self) -> None:            
         try:
+            # Validar fechas validas
             self.validate()
         except Exception as error:
             messagebox.showwarning("save_repair_error", error)
             return
-        
-        # Comprobar si se necesita state normal en spinbox
+
+        # Comprobar si se necesita state normal en spinbox (Parece que no es necesario)
         folio = clean_str(self.tx_folio.get())
         license_plate = clean_str(self.opm_license_plate.get())
-        part = clean_str(self.opm_search_part.get())
+        clean_part = clean_str(self.opm_part.get())
         quantity = clean_str(self.sp_quantity.get())
         fault = clean_str(self.tx_fault.get())
         
         try:
-            repair = repair_class(int(folio), license_plate, self.cal_date_in.get_date(), self.cal_date_in.get_date())
-            # TODO: Asegurarse de que funciona find_id
-            repair_part = repair_part_class(int(folio), find_id(self.all_part, part), int(quantity), fault)
-            part = part_class(id=find_id(self.all_part, part))
+            # ID de la nueva parte
+            part_id = find_id(self.all_part, clean_part)
+            # Añador a la instancia repair la fecha de entrada y salida si se esta editando o creando una nueva reparacion con un vehiculo (matricula)nuevo
+            # No es necesario guardar una instancia de repair si el vehiculo ya esta en la tabla de reparaciones
+            # if self.new_date == True or self.band == False:
+            #     repair: repair_class = repair_class(int(folio), license_plate, self.cal_date_in.get_date(), self.cal_date_in.get_date())
+            if self.new_date == True or self.band == False:
+                date_in = format_date_to_sql(self.cal_date_in.get_date())
+                date_out = format_date_to_sql(self.cal_date_out.get_date())
+                repair: repair_class = repair_class(int(folio), license_plate, date_in, date_out)
             
-            part = db_part.search(self, part)
-            # stock = teniamos 4 - ahora son 6 = -2
-            # stock = teniamos 4 - ahora son 3 = 1
-            stock = self.quantity_edit - self.sp_quantity.get()
-            # stock = el stock actual es de 3 + (-2) = 1
-            # stock = el stock actual es de 3 + 1 = 4
-            stock = part.get_stock() + stock
-            
+            repair_part: repair_part_class = repair_part_class(int(folio), part_id, int(quantity), fault)
+
+            print("\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*")
+            print(f"{"Saving" if self.band else 'editing'} repair\n")
+            print(f"part -> {clean_part}")
+            print(f"part_id -> {part_id}")
+
+            # Parte seleccionada del opm: no es pieza a reponer
+            aux: part_class = part_class(id=part_id)
+            part = db_part.search(self, aux)
+
             if self.band == True:
-                db_repair.save(self, repair)
+                # Aun no se agrega el vehiculo a folio
+                # TODO: Puede que esta validación solo necesite self.new_date en lugar de la consulta a la BD
+                if license_plate_on_repair(self.selected_license_plate.get()) == 0:
+                    db_repair.save(self, repair)
                 db_repair_part.save(self, repair_part)
-                
-                # REPONER STOCK
-                part = part_class(id=self.part_id_edit, stock=stock)
-                db_part.edit(self, part)
-                
+
+                # REDUCIR STOCK
+                stock = part.get_stock() - int(self.sp_quantity.get())
+                print("Part Stock before -> ", part.get_stock())
+                print("Part Stock after -> ", stock)
+                new_part: part_class = part_class(id=part_id, stock=stock)
+                db_part.edit_stock(self, new_part)
+
                 messagebox.showinfo("Exitoso", "Parte guardada exitosamente!")
             else:
                 db_repair.edit(self, repair)
                 db_repair_part.edit(self, repair_part)
-                
-                # REPONER STOCK
+
                 # Otra pieza
                 if self.replace_stock:
-                    part = part_class(id=self.part_id_edit, stock=self.quantity_edit)
+                    # REPONER STOCK VIEJA PIEZA
+                    aux = db_part.search(self, part_class(id=self.part_id_edit))
+                    old_part = part_class(id=self.part_id_edit, stock=aux.get_stock() + self.quantity_edit)
+                    replace_stock = db_part.edit_stock(self, old_part)
+                    print(f"Old part stock before -> {aux.get_stock()}")
+                    print(f"Old part stock after -> {replace_stock.get_stock()}")
+                    # REDUCIR STOCK NUEVA PIEZA
+                    # new_part = part_class(id=part_id)
+                    # new_part = db_part.search(self, new_part)
+                    db_part.edit_stock(self, part_class(id=part_id, stock=part.get_stock() - int(self.sp_quantity.get())))
+                    print(f"New part stock before -> {part.get_stock()}")
+                    print(f"New part stock afer -> {part.get_stock() - int(self.sp_quantity.get())}")
+
                 # Misma pieza
                 else:
-                    part = part_class(id=self.part_id_edit, stock=stock)
-                db_part.edit(self, part)
+                    # CAMBIAR STOCK
+                    # stock = teniamos 4 - ahora son 6 = -2
+                    # stock = teniamos 4 - ahora son 3 = 1
+                    print("Quantity edit")
+                    print(f"Same part stock before -> {self.quantity_edit}")
+                    stock = self.quantity_edit - self.sp_quantity.get()
+                    print(3)
+                    # stock = el stock actual es de 3 + (-2) = 1
+                    # stock = el stock actual es de 3 + 1 = 4
+                    stock = part.get_stock() + stock
+                    print("Same part stock after -> ", stock)
+                    new_part = part_class(id=self.part_id_edit, stock=stock)
+                db_part.edit_stock(self, new_part)
                 
                 messagebox.showinfo("Exitoso", "Parte editada exitosamente!")
                 
@@ -260,6 +329,8 @@ class Repairs:
             messagebox.showerror("Error", f"Error al {"guardar" if self.band else "editar"} pieza en BD")
         finally:
             self.band = None
+            self.new_date = None
+            self.quantity_edit = None
 
     def remove_repair(self) -> None:
         self.tx_folio.configure(state=ENABLE)
@@ -291,19 +362,20 @@ class Repairs:
         self.sp_quantity.delete(0, END)
         
         self.cal_date_in.selection_set(get_datetime())
-        self.cal_date_out.selection_set(get_datetime()+timedelta(days=1))
+        self.cal_date_out.selection_set(get_datetime(2))
     
+    #region default
     def default(self):
         # Update list of license plates
         self.license_plates = available_license_plates(self.profile.get_id())
         
+        self.cal_date_in.configure(state=ENABLE)
+        self.cal_date_out.configure(state=ENABLE)
         self.tx_folio.configure(state=ENABLE)
         self.opm_license_plate.configure(state=ENABLE)
         self.opm_part.configure(state=ENABLE)
         self.sp_quantity.configure(state='normal')
         self.tx_fault.configure(state=ENABLE)
-        self.cal_date_in.configure(state=ENABLE)
-        self.cal_date_out.configure(state=ENABLE)
         self.clear_repair()
         
         self.bt_edit.configure(state=DISABLED)
@@ -323,6 +395,7 @@ class Repairs:
         self.opm_search_part.configure(state=DISABLED)
         self.bt_search.configure(state=DISABLED)
     
+    #region enable_search
     def enable_search(self):
         if self.profile.get_profile() == "admin":
             self.bt_new.configure(state=DISABLED)
@@ -346,6 +419,7 @@ class Repairs:
         self.cal_date_out.configure(state=ENABLE)
         self.clear_repair()
 
+    #region Validate
     def validate(self) -> None:
         entry_empty(self.tx_folio, "Folio")
         entry_empty(self.opm_license_plate, "Matricula")
@@ -353,10 +427,10 @@ class Repairs:
         entry_empty(self.sp_quantity, "Cantidad")
         entry_empty(self.tx_fault, "Fallo")
 
-        print(f"ID encontrado -> {find_id(self.all_part, self.opm_part.get())}")
+        # print(f"ID encontrado -> {find_id(self.all_part, self.opm_part.get())}")
         repair_part = repair_part_class(folio=self.tx_folio.get(), part_id=find_id(self.all_part, self.opm_part.get()))
         if db_repair_part.search_bool(self, repair_part):
-            raise Exception("Ya existe una reparación con esa parte")
+            raise Exception("Ya existe una reparación con ese folio y parte")
 
         if self.opm_license_plate.get() == "No disponible":
             raise Exception("No se encontraron vehiculos")
@@ -375,7 +449,12 @@ class Repairs:
 
         if len(self.tx_fault.get()) > 80:
             raise Exception("Tamaño maximo de fallo: 80 caracteres")
-        
+
+        date_in = datetime.strptime(self.cal_date_in.get_date(), "%d/%m/%y")
+        date_out = datetime.strptime(self.cal_date_out.get_date(), "%d/%m/%y")
+        if  date_in > date_out:
+            raise Exception("Las fechas no coinciden")
+
         self.validate_license_plate(self.opm_license_plate.get())
 
     def validate_license_plate(self, license: str) -> None:

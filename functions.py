@@ -1,5 +1,5 @@
 from customtkinter import CTkEntry
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 def is_empty(text: str) -> bool:
@@ -41,7 +41,7 @@ def is_alphabetic(text: str) -> bool:
 def clean_str(text: str) -> str:
     return text.lstrip().rstrip()
 
-def get_datetime() -> datetime:
+def get_datetime(days: int = 0) -> datetime:
     """Obtener la fecha actual en formato datetime
 
     :Example:
@@ -52,19 +52,58 @@ def get_datetime() -> datetime:
         datetime: Fecha actual
     """
     
-    return datetime.now().astimezone(pytz.timezone('America/Mexico_City')).date()
+    date = datetime.now().astimezone(pytz.timezone('America/Mexico_City')).date()+timedelta(days=days)
+    return date.strftime("%d/%m/%Y")
 # print(get_datetime())
 
-def get_date() -> list[str]:
+def get_date(days: int = 0) -> list[str]:
     """Obtener lista con la fecha actual
 
     :Example:
     >>> get_date()
-        ['2021', '12', '30']
+        ['30', '12', '2021']
 
     Returns:
-        list: [año, mes, dia]
+        list: [dia, mes, año]
     """
     
-    today = get_datetime()
-    return str(today).split('-')
+    today = get_datetime(days)
+    return str(today).split('/')
+
+def format_date_to_sql(date: str, _format: str = "%d/%m/%y") -> str:
+    """Formatear la fecha a un formato valido para SQL
+
+    :Example:
+    >>> format_date_to_sql("01/07/24")
+        2024-07-01
+    >>> format_date_to_sql("2024-07-01", "%Y-%m-%d")
+        2024-07-01
+    Args:
+        date (str): Fecha a formatear
+        format (str) = "%d/%m/%y": Formato
+
+    Returns:
+        str: Fecha formateada
+    """
+    datetime_format: datetime = datetime.strptime(date, _format)
+    return datetime_format.strftime(f"%Y-%m-%d")
+# print(format_date_to_sql("01/07/24"))
+# print(format_date_to_sql("2024-07-01", "%Y-%m-%d"))
+
+def format_date_to_calendar(date: str, _format: str = "%Y-%m-%d") -> str:
+    """Formatear la fecha a un formato valido para TKCalendar
+
+    :Example:
+    >>> format_date_to_calendar("2024-07-01")
+        01-07-2024
+    >>> format_date_to_calendar("2024/07/01", "%Y/%m/%d")
+        01-07-2024
+    Args:
+        date (str): Fecha a formatear
+        format (str): Formato
+
+    Returns:
+        str: Fecha formateada
+    """
+    datetime_format: datetime = datetime.strptime(date, _format)
+    return datetime_format.strftime(f"%d/%m/%Y")

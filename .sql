@@ -10,11 +10,13 @@ SELECT * FROM part, repair_part WHERE
 part.id != repair_part.part_id AND
 part.stock > 0;
 
-SELECT * FROM repair_part;
-DESCRIBE repair_part;
-SELECT * FROM part;
+-- Licencia de vehículo registrada en repair
+SELECT folio FROM repair WHERE
+license_plate = 'BBB111';
 
 -- Test de reparación
 SELECT * FROM part;
 SELECT * FROM repair;
 SELECT * FROM repair_part;
+
+SELECT COUNT(*) FROM repair_part WHERE folio = 2 AND part_id = 2;

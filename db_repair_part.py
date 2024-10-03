@@ -49,18 +49,21 @@ class db_repair_part:
             self.con = con.conection()
             self.conn = self.con.open()
             self.cursor1 = self.conn.cursor()
-            print(f"folio -> {repair_part.get_folio()}\npart_id -> {repair_part.get_part_id()}")
-            self.sql = f"SELECT * FROM {table} WHERE folio={repair_part.get_folio()} AND part_id={repair_part.get_part_id()}"
+            print("*-*-*-*-*-*-*-*-*-*-*")
+            print("db_repair_part")
+            print(f"search_bool\nFolio -> {repair_part.get_folio()}\nPart_id -> {repair_part.get_part_id()}")
+            print("*-*-*-*-*-*-*-*-*-*-*")
+            self.sql = f"SELECT COUNT(*) FROM {table} WHERE folio={repair_part.get_folio()} AND part_id={repair_part.get_part_id()}"
             self.cursor1.execute(self.sql)
             row = self.cursor1.fetchone()
             self.conn.commit()
-            self.conn.close()
-            if row[0] is not None:
-                return True
-            return False
+            return row[0]
         except Exception as err:
             print(f"[-] search in db_repair_part: {err}")
-    
+            raise Exception(f"No se encontro el folio - parte")
+        finally:
+            self.conn.close()
+
     def edit(self, repair_part: repair_part_class) -> None:
         try:
             self.con = con.conection()

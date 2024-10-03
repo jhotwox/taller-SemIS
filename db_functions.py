@@ -17,7 +17,7 @@ def is_available(value: str, table: str, column: str) -> bool | None:
         column (str): Column where will gonna find
 
     Returns:
-        bool | None: True if the value is available and None if the value isn't available or an error happend
+        bool | None: True if the value is available and None if the value isn't available or an error happened
         
     Raises:
         Exception: Value isn't available (Query returns False)
@@ -55,7 +55,7 @@ def name_available(value: str, table: str) -> bool | None:
         table (str): Name of the table to search
 
     Returns:
-        bool | None: True if the name is available and None if the name isn't available or an error happend
+        bool | None: True if the name is available and None if the name isn't available or an error happened
     
     Raises:
         Exception: Value isn't available (Query returns False)
@@ -65,7 +65,7 @@ def name_available(value: str, table: str) -> bool | None:
 
 
 def license_plate_available(value: str, table: str) -> bool | None:
-        """Return a bool if the license plate is available
+    """Return a bool if the license plate is available
 
     :Example:
     >>> license_plate_available("BBB222", "vehicle")
@@ -78,12 +78,13 @@ def license_plate_available(value: str, table: str) -> bool | None:
         table (str): Name of the table to search
 
     Returns:
-        bool | None: True if the license plate is available and None if the license plate isn't available or an error happend
+        bool | None: True if the license plate is available and None if the license plate isn't available or an error happened
     
     Raises:
         Exception: Value isn't available (Query returns False)
     """
-        return is_available(value, table, "license_plate")
+    
+    return is_available(value, table, "license_plate")
 
 def available_customers(user_id: int) -> dict:
     """Return a dictionary with the id and name of customers registered by the user
@@ -103,6 +104,36 @@ def available_customers(user_id: int) -> dict:
     id = get_column_with_user('customer', 'id', user_id)
     return dict(zip(id, name))
 # print(available_customers(1))
+
+def license_plate_on_repair(value: str) -> int | None:
+    """Return the folio if the license plate have been registered in the repair table
+
+    :Example:
+    >>> license_plate_on_repair("BBB222")
+        2
+    >>> license_plate_on_repair("AAA333")
+        0
+    
+    Args:
+        value (str): license_plate to search
+        
+    Returns:
+        int | None: > 0 if the license plate have been registered, 0 if license plate wasn't found and None if an error happened
+    
+    Raises:
+        Exception: An error happened
+    """
+    
+    conn = con.conection().open()
+    cursor = conn.cursor()
+    sql = f"SELECT folio FROM repair WHERE license_plate = '{value}'"
+    cursor.execute(sql)
+    row = cursor.fetchone()
+    conn.commit()
+    if row is None:
+        return 0
+    return row[0]
+# print(license_plate_on_repair("BBB222"))
 
 #region Parts
 #TODO:

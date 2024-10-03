@@ -60,6 +60,20 @@ class db_part:
             raise Exception(f"Error al editar parte: {err}")
         finally:
             self.conn.close()
+    
+    def edit_stock(self, part: part_class) -> None:
+        try:
+            self.con = con.conection()
+            self.conn = self.con.open()
+            self.cursor1 = self.conn.cursor()
+            self.sql = f"UPDATE {table} SET stock={part.get_stock()} WHERE id={part.get_id()}"
+            self.cursor1.execute(self.sql)
+            self.conn.commit()
+        except Exception as err:
+            print(f"[-] edit_stock_db_part: {err}")
+            raise Exception(f"Error al editar el stock en la parte: {err}")
+        finally:
+            self.conn.close()
             
     def remove(self, part: part_class) -> None:
         try:
